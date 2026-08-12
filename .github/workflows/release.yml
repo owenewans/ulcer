@@ -3,6 +3,12 @@ name: release
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to rebuild
+        required: true
+        type: string
 
 permissions:
   attestations: write
@@ -19,10 +25,19 @@ jobs:
   release:
     runs-on: ubuntu-latest
     concurrency:
-      group: release-${{ github.ref }}
+      group: release-${{ inputs.tag || github.ref }}
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+      - name: Validate release tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          version="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          printf 'RELEASE_VERSION=%s\n' "$version" >> "$GITHUB_ENV"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: ${{ env.GO_VERSION }}
@@ -38,15 +53,17 @@ jobs:
       - name: Log in to GHCR
         env:
           GH_TOKEN: ${{ github.token }}
-        run: printenv GH_TOKEN | podman login ghcr.io --username "${{ github.actor }}" --password-stdin
+        run: |
+          mkdir -p "$HOME/.docker"
+          auth_file="$HOME/.docker/config.json"
+          printenv GH_TOKEN | podman login --authfile "$auth_file" ghcr.io --username "${{ github.actor }}" --password-stdin
+          printf 'REGISTRY_AUTH_FILE=%s\nDOCKER_CONFIG=%s\n' "$auth_file" "$HOME/.docker" >> "$GITHUB_ENV"
       - name: Build and push runtime images
         id: images
-        env:
-          VERSION: ${{ github.ref_name }}
         run: |
           : > dist/container-digests.txt
           for component in host instance ui caddy; do
-            image="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/ulcer-${component}:${VERSION}"
+            image="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/ulcer-${component}:${RELEASE_VERSION}"
             latest="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/ulcer-${component}:latest"
             podman build --file "deploy/Containerfile.${component}" --tag "$image" .
             podman push --digestfile "dist/${component}.digest" "$image"
@@ -75,7 +92,7 @@ jobs:
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${INSTANCE_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-instance@.container"
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${UI_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-ui.container"
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${CADDY_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-caddy.container"
-          tar --create --gzip --file "dist/ulcer-deployment-${GITHUB_REF_NAME}.tar.gz" -C "$staging" ulcer
+          tar --create --gzip --file "dist/ulcer-deployment-${RELEASE_VERSION}.tar.gz" -C "$staging" ulcer
           cp versions/engines.json versions/sources.json dist/
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
@@ -151,7 +168,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: >-
-          gh release create "${GITHUB_REF_NAME}"
+          gh release create "${RELEASE_VERSION}"
           dist/*
-          --title "ulcer ${GITHUB_REF_NAME}"
+          --title "ulcer ${RELEASE_VERSION}"
           --generate-notes

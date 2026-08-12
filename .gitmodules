@@ -1,0 +1,45 @@
+[submodule "engines/xray-core"]
+	path = engines/xray-core
+	url = https://github.com/XTLS/Xray-core.git
+[submodule "engines/sing-box"]
+	path = engines/sing-box
+	url = https://github.com/SagerNet/sing-box.git
+[submodule "engines/shadowsocks-rust"]
+	path = engines/shadowsocks-rust
+	url = https://github.com/shadowsocks/shadowsocks-rust.git
+[submodule "engines/hysteria"]
+	path = engines/hysteria
+	url = https://github.com/apernet/hysteria.git
+[submodule "engines/anytls-go"]
+	path = engines/anytls-go
+	url = https://github.com/anytls/anytls-go.git
+[submodule "engines/mieru"]
+	path = engines/mieru
+	url = https://github.com/enfein/mieru.git
+[submodule "engines/naiveproxy"]
+	path = engines/naiveproxy
+	url = https://github.com/klzgrad/naiveproxy.git
+[submodule "engines/forwardproxy"]
+	path = engines/forwardproxy
+	url = https://github.com/klzgrad/forwardproxy.git
+[submodule "engines/tuic"]
+	path = engines/tuic
+	url = https://github.com/tuic-protocol/tuic.git
+[submodule "engines/juicity"]
+	path = engines/juicity
+	url = https://github.com/juicity/juicity.git
+[submodule "engines/trusttunnel"]
+	path = engines/trusttunnel
+	url = https://github.com/TrustTunnel/TrustTunnel.git
+[submodule "engines/olcrtc"]
+	path = engines/olcrtc
+	url = https://github.com/openlibrecommunity/olcrtc.git
+[submodule "engines/shadowquic"]
+	path = engines/shadowquic
+	url = https://github.com/spongebob888/shadowquic.git
+[submodule "clients/owenclave"]
+	path = clients/owenclave
+	url = https://github.com/owenewans/owenclave.git
+[submodule "services/blocky"]
+	path = services/blocky
+	url = https://github.com/0xERR0R/blocky.git

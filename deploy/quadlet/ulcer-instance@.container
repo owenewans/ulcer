@@ -1,0 +1,24 @@
+[Unit]
+Description=Ulcer INSTANCE agent %i
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/owenewans/ulcer-instance@sha256:REPLACE_WITH_RELEASE_DIGEST
+ContainerName=ulcer-instance-%i
+Network=ulcer.network
+EnvironmentFile=/etc/ulcer/instances/%i/instance.env
+Volume=/etc/ulcer/instances/%i:/var/lib/ulcer-instance:ro
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+PidsLimit=128
+Memory=256M
+
+[Service]
+Restart=on-failure
+RestartSec=5
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

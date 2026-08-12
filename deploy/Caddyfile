@@ -1,0 +1,34 @@
+{
+	admin off
+	grace_period 10s
+	servers {
+		protocols h1 h2 h3
+		0rtt off
+	}
+}
+
+{$ULCER_PUBLIC_ADDRESS} {
+	tls {
+		issuer acme https://acme-v02.api.letsencrypt.org/directory {
+			profile shortlived
+		}
+	}
+
+	encode zstd gzip
+
+	@control path /api/* /healthz
+	reverse_proxy @control ulcer-host:8080
+	reverse_proxy ulcer-ui:3000
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

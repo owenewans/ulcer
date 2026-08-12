@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package ulcer.control.v1;
+
+option go_package = "github.com/owenewans/ulcer/gen/control/v1;controlv1";
+
+import "google/protobuf/timestamp.proto";
+
+service ControlPlane {
+  rpc Connect(stream InstanceMessage) returns (stream HostMessage);
+}
+
+message InstanceMessage {
+  oneof body {
+    InstanceHello hello = 1;
+    InstanceStatus status = 2;
+    MeterBatch meters = 3;
+  }
+}
+
+message HostMessage {
+  oneof body {
+    DesiredState desired = 1;
+    MeterAck meter_ack = 2;
+    HostNotice notice = 3;
+  }
+}
+
+message InstanceHello {
+  string instance_id = 1;
+  string name = 2;
+  string agent_version = 3;
+  repeated string capabilities = 4;
+}
+
+message InstanceStatus {
+  string instance_id = 1;
+  uint64 applied_generation = 2;
+  string spec_digest = 3;
+  string phase = 4;
+  string reason = 5;
+  google.protobuf.Timestamp observed_at = 6;
+}
+
+message DesiredState {
+  string instance_id = 1;
+  uint64 generation = 2;
+  string spec_digest = 3;
+  bytes canonical_spec = 4;
+}
+
+message MeterBatch {
+  string instance_id = 1;
+  uint64 first_sequence = 2;
+  repeated MeterDelta deltas = 3;
+}
+
+message MeterDelta {
+  uint64 sequence = 1;
+  string principal_id = 2;
+  string quota_epoch = 3;
+  uint64 uplink_bytes = 4;
+  uint64 downlink_bytes = 5;
+  google.protobuf.Timestamp observed_at = 6;
+}
+
+message MeterAck {
+  string instance_id = 1;
+  uint64 contiguous_sequence = 2;
+}
+
+message HostNotice {
+  string code = 1;
+  string message = 2;
+}

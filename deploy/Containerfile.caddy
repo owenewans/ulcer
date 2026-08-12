@@ -1,0 +1,19 @@
+FROM docker.io/library/golang@sha256:53eeac89074db483fdf0ab3be1df32bf6e47562263d2d0d6baa7f26acb4957dd AS build
+
+RUN GOBIN=/out CGO_ENABLED=0 go install github.com/caddyserver/caddy/v2/cmd/caddy@e2eee6a7fce366321294c9c2a79f3146891dcbdf
+
+FROM docker.io/library/debian@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /data /config /etc/caddy \
+    && chown -R 65532:65532 /data /config
+COPY --from=build /out/caddy /usr/local/bin/caddy
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+ENV XDG_CONFIG_HOME=/config \
+    XDG_DATA_HOME=/data
+USER 65532:65532
+EXPOSE 80 443 443/udp
+ENTRYPOINT ["/usr/local/bin/caddy"]
+CMD ["run", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]

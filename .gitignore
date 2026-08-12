@@ -1,0 +1,32 @@
+prompt
+
+# local state and credentials
+.env
+.env.*
+!.env.example
+.ulcer/
+.kb/
+data/
+dist/
+coverage/
+*.key
+*.pem
+*.crt
+
+# go
+bin/
+*.test
+mage_output_file.go
+
+# web
+web/.next/
+web/node_modules/
+web/playwright-report/
+web/test-results/
+web/.bun/
+web/*.tsbuildinfo
+
+# editors and operating systems
+.idea/
+.vscode/
+.DS_Store

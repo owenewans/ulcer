@@ -1,0 +1,25 @@
+FROM docker.io/library/golang@sha256:53eeac89074db483fdf0ab3be1df32bf6e47562263d2d0d6baa7f26acb4957dd AS build
+
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY api ./api
+COPY cmd ./cmd
+COPY gen ./gen
+COPY internal ./internal
+COPY versions ./versions
+ARG TARGETOS=linux
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
+    go build -trimpath -ldflags="-s -w" -o /out/ulcer-instance ./cmd/ulcer-instance
+
+FROM docker.io/library/debian@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+COPY --from=build /out/ulcer-instance /usr/local/bin/ulcer-instance
+USER 65532:65532
+ENV ULCER_INSTANCE_DATA_DIR=/var/lib/ulcer-instance
+VOLUME ["/var/lib/ulcer-instance"]
+ENTRYPOINT ["/usr/local/bin/ulcer-instance"]

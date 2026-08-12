@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "reviewed_at": "2026-08-12",
+  "sources": [
+    {
+      "path": "engines/xray-core",
+      "repository": "https://github.com/XTLS/Xray-core.git",
+      "commit": "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "engines/sing-box",
+      "repository": "https://github.com/SagerNet/sing-box.git",
+      "commit": "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "engines/shadowsocks-rust",
+      "repository": "https://github.com/shadowsocks/shadowsocks-rust.git",
+      "commit": "7ee1aa9223ed8f4d34734aac919036c8ad4502c2",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "engines/hysteria",
+      "repository": "https://github.com/apernet/hysteria.git",
+      "commit": "14e9fff1d972ab0187ac7fcf75b9514dc8664065",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "engines/anytls-go",
+      "repository": "https://github.com/anytls/anytls-go.git",
+      "commit": "9666872946857b50a74fdb692896d77b53773cb2",
+      "role": "blocked-source-reference",
+      "artifact": false
+    },
+    {
+      "path": "engines/mieru",
+      "repository": "https://github.com/enfein/mieru.git",
+      "commit": "a366b4a2d08a42178704f3126d71f82a27e014a5",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "engines/naiveproxy",
+      "repository": "https://github.com/klzgrad/naiveproxy.git",
+      "commit": "3ba967e2d36cc133a896e81a36257ad4c6ea20f4",
+      "role": "engine-client",
+      "artifact": true
+    },
+    {
+      "path": "engines/forwardproxy",
+      "repository": "https://github.com/klzgrad/forwardproxy.git",
+      "commit": "d62c80d3dd2c706b6b87579844d2397bddd18317",
+      "role": "engine-server-module",
+      "artifact": true
+    },
+    {
+      "path": "engines/tuic",
+      "repository": "https://github.com/tuic-protocol/tuic.git",
+      "commit": "8e118f242f24a17a9f487dc344cc50d7e63e557e",
+      "role": "specification-reference",
+      "artifact": false
+    },
+    {
+      "path": "engines/juicity",
+      "repository": "https://github.com/juicity/juicity.git",
+      "commit": "88dbf4f8efc54d70caf319ec79d0b7f12d70faf1",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "engines/trusttunnel",
+      "repository": "https://github.com/TrustTunnel/TrustTunnel.git",
+      "commit": "c33f2a6a3a9490058ca76a4274f4c96da9ec51e6",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "engines/olcrtc",
+      "repository": "https://github.com/openlibrecommunity/olcrtc.git",
+      "commit": "3339cd36716885e583429f97e73462cde4984e2e",
+      "role": "engine-library",
+      "artifact": true
+    },
+    {
+      "path": "engines/shadowquic",
+      "repository": "https://github.com/spongebob888/shadowquic.git",
+      "commit": "a6475e338aa20d4fb62d3334145d27ddeb45f936",
+      "role": "engine",
+      "artifact": true
+    },
+    {
+      "path": "clients/owenclave",
+      "repository": "https://github.com/owenewans/owenclave.git",
+      "commit": "34313d533fea48e992596b6c33d22da6ace44d30",
+      "role": "android-client",
+      "artifact": false
+    },
+    {
+      "path": "services/blocky",
+      "repository": "https://github.com/0xERR0R/blocky.git",
+      "commit": "91a8f4437e983c840874aec4aded47fd90bd6ddf",
+      "role": "adblock-service",
+      "artifact": false
+    }
+  ]
+}

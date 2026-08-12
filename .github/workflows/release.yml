@@ -1,0 +1,135 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  attestations: write
+  contents: write
+  packages: write
+  id-token: write
+
+env:
+  GO_VERSION: "1.26.0"
+  MAGE_VERSION: "v1.17.2"
+  REGISTRY: ghcr.io
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - run: go install github.com/magefile/mage@${MAGE_VERSION}
+      - run: sudo apt-get update && sudo apt-get install --yes podman
+      - run: mage freeze
+      - name: Build binaries
+        run: |
+          for arch in amd64 arm64; do
+            GOOS=linux GOARCH="$arch" mage release:binaries
+          done
+      - name: Log in to GHCR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: printenv GH_TOKEN | podman login ghcr.io --username "${{ github.actor }}" --password-stdin
+      - name: Build and push runtime images
+        id: images
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          : > dist/container-digests.txt
+          for component in host instance ui caddy; do
+            image="${REGISTRY}/${GITHUB_REPOSITORY_OWNER}/ulcer-${component}:${VERSION}"
+            podman build --file "deploy/Containerfile.${component}" --tag "$image" .
+            podman push --digestfile "dist/${component}.digest" "$image"
+            name="${image%:*}"
+            digest="$(cat "dist/${component}.digest")"
+            printf '%s@%s\n' "$name" "$digest" >> dist/container-digests.txt
+            printf '%s_name=%s\n' "$component" "$name" >> "$GITHUB_OUTPUT"
+            printf '%s_digest=%s\n' "$component" "$digest" >> "$GITHUB_OUTPUT"
+            printf '%s_image=%s@%s\n' "$component" "$name" "$digest" >> "$GITHUB_OUTPUT"
+          done
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ steps.images.outputs.host_image }}
+          output-file: dist/host.spdx.json
+          format: spdx-json
+          syft-version: v1.51.0
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ github.token }}
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ steps.images.outputs.instance_image }}
+          output-file: dist/instance.spdx.json
+          format: spdx-json
+          syft-version: v1.51.0
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ github.token }}
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ steps.images.outputs.ui_image }}
+          output-file: dist/ui.spdx.json
+          format: spdx-json
+          syft-version: v1.51.0
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ github.token }}
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
+        with:
+          image: ${{ steps.images.outputs.caddy_image }}
+          output-file: dist/caddy.spdx.json
+          format: spdx-json
+          syft-version: v1.51.0
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ github.token }}
+          upload-artifact: false
+          upload-release-assets: false
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
+      - name: Sign runtime images
+        run: |
+          while IFS= read -r image; do
+            cosign sign --yes "$image"
+          done < dist/container-digests.txt
+      - run: mage release:checksums
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ${{ steps.images.outputs.host_name }}
+          subject-digest: ${{ steps.images.outputs.host_digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ${{ steps.images.outputs.instance_name }}
+          subject-digest: ${{ steps.images.outputs.instance_digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ${{ steps.images.outputs.ui_name }}
+          subject-digest: ${{ steps.images.outputs.ui_digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-name: ${{ steps.images.outputs.caddy_name }}
+          subject-digest: ${{ steps.images.outputs.caddy_digest }}
+          push-to-registry: true
+      - uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3
+        with:
+          subject-path: dist/*
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          dist/*
+          versions/engines.json
+          versions/sources.json
+          --title "ulcer ${GITHUB_REF_NAME}"
+          --generate-notes

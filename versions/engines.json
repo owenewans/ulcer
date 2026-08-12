@@ -1,0 +1,163 @@
+{
+  "schema": 1,
+  "reviewed_at": "2026-08-12",
+  "policy": "frozen",
+  "engines": [
+    {
+      "id": "xray",
+      "name": "Xray-core",
+      "repository": "https://github.com/XTLS/Xray-core",
+      "tag": "v26.3.27",
+      "commit": "d2758a023cd7f4174a5a5fa4ff66e487d4342ba0",
+      "license": "MPL-2.0",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["shadowsocks-2022", "trojan", "hysteria2", "vmess", "vless", "http-connect", "socks", "http3"],
+      "capabilities": ["native-user-metering", "live-user-mutation", "reality", "xhttp", "grpc"]
+    },
+    {
+      "id": "sing-box",
+      "name": "sing-box",
+      "repository": "https://github.com/SagerNet/sing-box",
+      "tag": "v1.13.18",
+      "commit": "45ca32dcb966f07f97fc888fe8586e359dbe8405",
+      "license": "GPL-3.0-or-later",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["shadowsocks-2022", "trojan", "hysteria2", "anytls", "tuic", "vmess", "vless", "http-connect", "socks", "http3"],
+      "capabilities": ["native-user-metering", "reality", "hot-reload"]
+    },
+    {
+      "id": "shadowsocks-rust",
+      "name": "shadowsocks-rust",
+      "repository": "https://github.com/shadowsocks/shadowsocks-rust",
+      "tag": "v1.24.0",
+      "commit": "7ee1aa9223ed8f4d34734aac919036c8ad4502c2",
+      "license": "MIT",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["shadowsocks-2022"],
+      "capabilities": ["manager-api", "eih"]
+    },
+    {
+      "id": "hysteria",
+      "name": "Hysteria",
+      "repository": "https://github.com/apernet/hysteria",
+      "tag": "app/v2.12.1",
+      "commit": "14e9fff1d972ab0187ac7fcf75b9514dc8664065",
+      "license": "MIT",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["hysteria2"],
+      "capabilities": ["native-user-metering", "disconnect-live-sessions", "gecko-experimental"]
+    },
+    {
+      "id": "anytls-go",
+      "name": "AnyTLS reference",
+      "repository": "https://github.com/anytls/anytls-go",
+      "tag": "v0.0.13",
+      "commit": "9666872946857b50a74fdb692896d77b53773cb2",
+      "license": "UNLICENSED",
+      "distribution": "blocked",
+      "adapter_status": "blocked",
+      "protocols": ["anytls"],
+      "capabilities": []
+    },
+    {
+      "id": "mieru",
+      "name": "Mieru",
+      "repository": "https://github.com/enfein/mieru",
+      "tag": "v3.35.0",
+      "commit": "a366b4a2d08a42178704f3126d71f82a27e014a5",
+      "license": "GPL-3.0-or-later",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["mieru"],
+      "capabilities": ["native-user-metering", "hot-reload"]
+    },
+    {
+      "id": "naiveproxy",
+      "name": "NaiveProxy",
+      "repository": "https://github.com/klzgrad/naiveproxy",
+      "tag": "v150.0.7871.63-1",
+      "commit": "3ba967e2d36cc133a896e81a36257ad4c6ea20f4",
+      "license": "BSD-3-Clause",
+      "distribution": "source-build-dedicated",
+      "adapter_status": "planned",
+      "protocols": ["naive", "http3"],
+      "capabilities": ["chromium-fingerprint"]
+    },
+    {
+      "id": "tuic",
+      "name": "TUIC specification",
+      "repository": "https://github.com/tuic-protocol/tuic",
+      "tag": "",
+      "commit": "8e118f242f24a17a9f487dc344cc50d7e63e557e",
+      "license": "GPL-3.0",
+      "distribution": "specification-only",
+      "adapter_status": "blocked",
+      "protocols": ["tuic"],
+      "capabilities": []
+    },
+    {
+      "id": "juicity",
+      "name": "Juicity",
+      "repository": "https://github.com/juicity/juicity",
+      "tag": "v0.5.0",
+      "commit": "88dbf4f8efc54d70caf319ec79d0b7f12d70faf1",
+      "license": "AGPL-3.0",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["juicity"],
+      "capabilities": []
+    },
+    {
+      "id": "trusttunnel",
+      "name": "TrustTunnel",
+      "repository": "https://github.com/TrustTunnel/TrustTunnel",
+      "tag": "v1.0.33",
+      "commit": "c33f2a6a3a9490058ca76a4274f4c96da9ec51e6",
+      "license": "Apache-2.0",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["trusttunnel"],
+      "capabilities": ["prometheus"]
+    },
+    {
+      "id": "olcrtc",
+      "name": "OLCRTC",
+      "repository": "https://github.com/openlibrecommunity/olcrtc",
+      "tag": "",
+      "commit": "3339cd36716885e583429f97e73462cde4984e2e",
+      "license": "WTFPL",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["olcrtc"],
+      "capabilities": ["library-mode", "session-hooks"]
+    },
+    {
+      "id": "shadowquic",
+      "name": "ShadowQUIC",
+      "repository": "https://github.com/spongebob888/shadowquic",
+      "tag": "v0.3.12",
+      "commit": "a6475e338aa20d4fb62d3334145d27ddeb45f936",
+      "license": "MIT",
+      "distribution": "source-build",
+      "adapter_status": "planned",
+      "protocols": ["shadowquic"],
+      "capabilities": ["native-user-metering", "live-user-mutation", "disconnect-live-sessions"]
+    },
+    {
+      "id": "ulcer-ssh",
+      "name": "Ulcer SSH",
+      "repository": "https://github.com/owenewans/ulcer",
+      "tag": "",
+      "commit": "workspace",
+      "license": "GPL-3.0-only",
+      "distribution": "source-build",
+      "adapter_status": "research",
+      "protocols": ["ssh"],
+      "capabilities": ["virtual-principals", "direct-tcpip-only"]
+    }
+  ]
+}

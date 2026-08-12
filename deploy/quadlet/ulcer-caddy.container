@@ -1,0 +1,30 @@
+[Unit]
+Description=Ulcer public HTTPS edge
+After=ulcer-host.service ulcer-ui.service
+Requires=ulcer-host.service ulcer-ui.service
+
+[Container]
+Image=ghcr.io/owenewans/ulcer-caddy@sha256:REPLACE_WITH_RELEASE_DIGEST
+ContainerName=ulcer-caddy
+Network=ulcer.network
+EnvironmentFile=/etc/ulcer/caddy.env
+Volume=ulcer-caddy-data.volume:/data:U
+Volume=ulcer-caddy-config.volume:/config:U
+PublishPort=80:80
+PublishPort=443:443
+PublishPort=443:443/udp
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+AddCapability=NET_BIND_SERVICE
+User=65532
+Group=65532
+PidsLimit=256
+Memory=512M
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

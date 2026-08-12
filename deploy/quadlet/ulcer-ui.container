@@ -1,0 +1,22 @@
+[Unit]
+Description=Ulcer operator UI
+After=ulcer-host.service
+Requires=ulcer-host.service
+
+[Container]
+Image=ghcr.io/owenewans/ulcer-ui@sha256:REPLACE_WITH_RELEASE_DIGEST
+ContainerName=ulcer-ui
+Network=ulcer.network
+NetworkAlias=ulcer-ui
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+PidsLimit=256
+Memory=768M
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

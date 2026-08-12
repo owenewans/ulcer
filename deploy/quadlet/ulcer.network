@@ -1,0 +1,7 @@
+[Network]
+NetworkName=ulcer
+Driver=bridge
+IPv6=true
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,28 @@
+[Unit]
+Description=Ulcer HOST control plane
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=ghcr.io/owenewans/ulcer-host@sha256:REPLACE_WITH_RELEASE_DIGEST
+ContainerName=ulcer-host
+Network=ulcer.network
+NetworkAlias=ulcer-host
+Volume=ulcer-host-data.volume:/var/lib/ulcer:U
+EnvironmentFile=/etc/ulcer/host.env
+PublishPort=8443:8443
+ReadOnly=true
+NoNewPrivileges=true
+DropCapability=all
+PidsLimit=256
+Memory=1G
+HealthCmd=curl --fail --silent http://127.0.0.1:8080/healthz
+HealthInterval=15s
+HealthRetries=5
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

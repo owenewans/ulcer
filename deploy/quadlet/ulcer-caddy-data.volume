@@ -1,0 +1,5 @@
+[Volume]
+VolumeName=ulcer-caddy-data
+
+[Install]
+WantedBy=multi-user.target

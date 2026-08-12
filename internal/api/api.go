@@ -412,7 +412,9 @@ func (a *API) accessLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		started := time.Now()
 		next.ServeHTTP(w, r)
-		a.logger.Debug("http request", "method", r.Method, "path", r.URL.Path, "duration", time.Since(started))
+		method := strings.NewReplacer("\r", "", "\n", "").Replace(r.Method)
+		path := strings.NewReplacer("\r", "", "\n", "").Replace(r.URL.Path)
+		a.logger.Debug("http request", "method", method, "path", path, "duration", time.Since(started))
 	})
 }
 

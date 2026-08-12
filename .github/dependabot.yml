@@ -4,14 +4,49 @@ updates:
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: Etc/UTC
     target-branch: master
-  - package-ecosystem: npm
+    open-pull-requests-limit: 3
+    groups:
+      go-dependencies:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
+  - package-ecosystem: bun
     directory: /web
     schedule:
       interval: weekly
+      day: monday
+      time: "05:15"
+      timezone: Etc/UTC
     target-branch: master
+    open-pull-requests-limit: 3
+    groups:
+      bun-production:
+        patterns: ["*"]
+        dependency-type: production
+        update-types: [minor, patch]
+      bun-development:
+        patterns: ["*"]
+        dependency-type: development
+        update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+      day: monday
+      time: "05:30"
+      timezone: Etc/UTC
     target-branch: master
+    open-pull-requests-limit: 2
+    groups:
+      github-actions:
+        patterns: ["*"]
+        update-types: [minor, patch]

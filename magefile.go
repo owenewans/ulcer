@@ -178,7 +178,11 @@ func (Release) Binaries() error {
 	}
 	environment := map[string]string{"CGO_ENABLED": "0", "GOOS": goos, "GOARCH": goarch}
 	for _, binary := range []string{"host", "instance"} {
-		output := filepath.Join("dist", fmt.Sprintf("ulcer-%s-%s-%s", binary, goos, goarch))
+		extension := ""
+		if goos == "windows" {
+			extension = ".exe"
+		}
+		output := filepath.Join("dist", fmt.Sprintf("ulcer-%s-%s-%s%s", binary, goos, goarch, extension))
 		if err := run("", environment, "go", "build", "-trimpath", "-ldflags=-s -w", "-o", output, "./cmd/ulcer-"+binary); err != nil {
 			return err
 		}

@@ -71,6 +71,18 @@ mage e2e
 mage podman:smoke
 ```
 
+releases:
+- native `ulcer-host` and `ulcer-instance` binaries for Linux, macOS and
+  Windows on amd64/arm64
+- a deployment bundle with Quadlet, Caddy and nftables configuration
+- signed `ulcer-host`, `ulcer-instance`, `ulcer-ui` and `ulcer-caddy` images
+  in GHCR, plus SHA-256 checksums, SPDX SBOMs and build provenance
+- semantic release tags starting with `v0.0.1`
+
+Download immutable artifacts from [GitHub Releases](https://github.com/owenewans/ulcer/releases).
+The UI and Caddy are distributed as runtime images rather than pretending they
+are standalone Ulcer binaries.
+
 deployment:
 - Debian Bookworm, cgroup v2 and rootful Podman Quadlet
 - Caddy 2.11.4 with an explicit Let's Encrypt `shortlived` ACME profile

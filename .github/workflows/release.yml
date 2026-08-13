@@ -86,7 +86,7 @@ jobs:
           staging="$(mktemp -d)"
           mkdir -p "$staging/ulcer/quadlet"
           cp deploy/quadlet/* "$staging/ulcer/quadlet/"
-          cp deploy/Caddyfile deploy/nftables.conf .env.example README.md LICENSE "$staging/ulcer/"
+          cp deploy/Caddyfile deploy/nftables.conf .env.example readme.md LICENSE "$staging/ulcer/"
           cp docs/deployment.md versions/engines.json versions/sources.json "$staging/ulcer/"
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${HOST_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-host.container"
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${INSTANCE_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-instance@.container"

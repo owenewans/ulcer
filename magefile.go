@@ -162,7 +162,7 @@ func (Web) Build() error {
 
 type Podman mg.Namespace
 
-// Smoke builds the runtime images and checks HOST health in a locked-down container.
+// Smoke builds the runtime images and checks HOST and UI in locked-down containers.
 func (Podman) Smoke() error {
 	return run("", nil, filepath.Join("hack", "podman-smoke.sh"))
 }

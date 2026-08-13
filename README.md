@@ -83,6 +83,15 @@ Download immutable artifacts from [GitHub Releases](https://github.com/owenewans
 The UI and Caddy are distributed as runtime images rather than pretending they
 are standalone Ulcer binaries.
 
+Install the current foundation on a fresh Debian or Ubuntu host as root:
+```sh
+curl -fsSL https://raw.githubusercontent.com/owenewans/ulcer/master/install.sh | sh
+```
+
+Set `ULCER_PUBLIC_ADDRESS=panel.example.com` before the command to use a domain;
+otherwise the installer detects the public IPv4 address. It verifies the pinned
+release bundle against `SHA256SUMS` before installing any Quadlet units.
+
 deployment:
 - Debian Bookworm, cgroup v2 and rootful Podman Quadlet
 - Caddy 2.11.4 with an explicit Let's Encrypt `shortlived` ACME profile

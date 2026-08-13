@@ -92,8 +92,9 @@ jobs:
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${INSTANCE_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-instance@.container"
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${UI_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-ui.container"
           sed -i "s/REPLACE_WITH_RELEASE_DIGEST/${CADDY_DIGEST#sha256:}/" "$staging/ulcer/quadlet/ulcer-caddy.container"
+          cp install.sh "$staging/ulcer/"
           tar --create --gzip --file "dist/ulcer-deployment-${RELEASE_VERSION}.tar.gz" -C "$staging" ulcer
-          cp versions/engines.json versions/sources.json dist/
+          cp install.sh versions/engines.json versions/sources.json dist/
       - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           image: ${{ steps.images.outputs.host_image }}

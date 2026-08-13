@@ -31,6 +31,8 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
       - run: go install github.com/magefile/mage@${MAGE_VERSION}
+      - run: sudo apt-get update && sudo apt-get install --yes shellcheck
+      - run: shellcheck install.sh
       - run: bun install --frozen-lockfile
         working-directory: web
       - run: mage check

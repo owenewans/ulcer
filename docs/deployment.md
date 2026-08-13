@@ -14,6 +14,17 @@ uidmap fuse-overlayfs slirp4netns containernetworking-plugins
 unprivileged utility containers. Engine instances are rootless inside their
 containers even though the machine-level Podman service is rootful.
 
+For a fresh Debian or Ubuntu host, the supported installer verifies and deploys
+the digest-pinned release bundle:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/owenewans/ulcer/master/install.sh | sh
+```
+
+Set `ULCER_PUBLIC_ADDRESS` to a domain or public IP to override automatic IPv4
+detection. The installer refuses occupied ports 80/443 and never flushes the
+host firewall.
+
 The host kernel must expose cgroup v2 and BTF for CO-RE eBPF. A builder needs:
 
 ```text

@@ -1,5 +1,6 @@
 {
 	admin off
+	default_sni {$ULCER_PUBLIC_ADDRESS}
 	grace_period 10s
 	servers {
 		protocols h1 h2 h3

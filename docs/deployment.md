@@ -6,7 +6,7 @@ Production assumes Debian 12 Bookworm, systemd, cgroup v2 and rootful Podman.
 The minimal host packages are:
 
 ```text
-podman nftables ca-certificates curl iproute2 procps
+podman aardvark-dns nftables ca-certificates curl iproute2 procps
 uidmap fuse-overlayfs slirp4netns containernetworking-plugins
 ```
 
@@ -22,8 +22,8 @@ curl -fsSL https://raw.githubusercontent.com/owenewans/ulcer/master/install.sh |
 ```
 
 Set `ULCER_PUBLIC_ADDRESS` to a domain or public IP to override automatic IPv4
-detection. The installer refuses occupied ports 80/443 and never flushes the
-host firewall.
+detection. On first installation, the installer refuses occupied ports 80/443;
+upgrades reuse the installed Caddy units. It never flushes the host firewall.
 
 The host kernel must expose cgroup v2 and BTF for CO-RE eBPF. A builder needs:
 

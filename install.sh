@@ -2,7 +2,7 @@
 set -eu
 
 repository=${ULCER_REPOSITORY:-owenewans/ulcer}
-version=${ULCER_VERSION:-v0.0.1}
+version=${ULCER_VERSION:-v0.0.2}
 release_url="https://github.com/${repository}/releases/download/${version}"
 bundle="ulcer-deployment-${version}.tar.gz"
 
@@ -21,10 +21,9 @@ cleanup() {
 
 check_ports() {
 	command -v ss >/dev/null 2>&1 || return 0
-	if ! systemctl is-active --quiet ulcer-caddy.service 2>/dev/null; then
-		listeners=$(ss -H -ltn | awk '$4 ~ /:80$/ || $4 ~ /:443$/')
-		[ -z "$listeners" ] || die "ports 80 or 443 are already in use:\n$listeners"
-	fi
+	[ -r /etc/containers/systemd/ulcer-caddy.container ] && return 0
+	listeners=$(ss -H -ltn | awk '$4 ~ /:80$/ || $4 ~ /:443$/')
+	[ -z "$listeners" ] || die "ports 80 or 443 are already in use:\n$listeners"
 }
 
 [ "$(id -u)" -eq 0 ] || die "run as root"
@@ -56,7 +55,7 @@ actual=$(sha256sum "$workdir/$bundle" | awk '{ print $1 }')
 [ "$actual" = "$expected" ] || die "release bundle checksum mismatch"
 
 [ -r /etc/os-release ] || die "unsupported operating system"
-os_id=$(awk -F= '$1 == "ID" { gsub(/\"/, "", $2); print $2 }' /etc/os-release)
+os_id=$(awk -F= '$1 == "ID" { gsub(/"/, "", $2); print $2 }' /etc/os-release)
 case "$os_id" in
 	debian | ubuntu) ;;
 	*) die "only Debian and Ubuntu are currently supported" ;;
@@ -69,7 +68,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install --yes --no-install-recommends \
 	ca-certificates containernetworking-plugins curl fuse-overlayfs iproute2 \
-	nftables podman procps slirp4netns uidmap
+	aardvark-dns nftables podman procps slirp4netns uidmap
 check_ports
 
 [ -r /sys/fs/cgroup/cgroup.controllers ] || die "cgroup v2 is required"
@@ -92,8 +91,6 @@ printf 'ULCER_HTTP_ADDR=0.0.0.0:8080\nULCER_GRPC_ADDR=0.0.0.0:8443\nULCER_DATA_D
 printf 'ULCER_PUBLIC_ADDRESS=%s\n' "$public_address" > "$workdir/caddy.env"
 install -m 0600 "$workdir/host.env" /etc/ulcer/host.env
 install -m 0600 "$workdir/caddy.env" /etc/ulcer/caddy.env
-printf '%s\n' "$version" > "$workdir/install.version"
-install -m 0644 "$workdir/install.version" /etc/ulcer/install.version
 
 for unit in "$workdir/release/ulcer/quadlet/"*.container; do
 	image=$(awk -F= '$1 == "Image" { print $2 }' "$unit")
@@ -119,9 +116,38 @@ until podman exec ulcer-host curl --fail --silent http://127.0.0.1:8080/healthz 
 	sleep 1
 done
 
+attempt=0
+until podman exec ulcer-ui node -e \
+	'fetch("http://127.0.0.1:3000/").then(response => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))' \
+	>/dev/null 2>&1; do
+	attempt=$((attempt + 1))
+	if [ "$attempt" -ge 60 ]; then
+		journalctl --no-pager --lines 80 -u ulcer-ui.service >&2 || true
+		die "UI did not become healthy"
+	fi
+	sleep 1
+done
+
+case "$public_address" in
+	*:*) public_url="https://[$public_address]/" ;;
+	*) public_url="https://$public_address/" ;;
+esac
+attempt=0
+until curl --fail --silent --show-error --location --noproxy '*' \
+	--max-time 15 "${public_url}healthz" >/dev/null 2>&1; do
+	attempt=$((attempt + 1))
+	if [ "$attempt" -ge 120 ]; then
+		journalctl --no-pager --lines 80 -u ulcer-caddy.service >&2 || true
+		die "public HTTPS endpoint did not become healthy"
+	fi
+	sleep 1
+done
+
+printf '%s\n' "$version" > "$workdir/install.version"
+install -m 0644 "$workdir/install.version" /etc/ulcer/install.version
 setup_token=$(podman exec ulcer-host sh -c 'cat /var/lib/ulcer/setup.token 2>/dev/null || true')
 log "installation complete"
-printf '\nURL: https://%s/\n' "$public_address"
+printf '\nURL: %s\n' "$public_url"
 if [ -n "$setup_token" ]; then
 	printf 'Setup token: %s\n' "$setup_token"
 else

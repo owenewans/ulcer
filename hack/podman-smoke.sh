@@ -10,16 +10,17 @@ export http_proxy=
 export https_proxy=
 export all_proxy=
 
-root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 suffix=$$
 host_image="localhost/ulcer-host-smoke:${suffix}"
 instance_image="localhost/ulcer-instance-smoke:${suffix}"
 ui_image="localhost/ulcer-ui-smoke:${suffix}"
 caddy_image="localhost/ulcer-caddy-smoke:${suffix}"
 host_name="ulcer-host-smoke-${suffix}"
+ui_name="ulcer-ui-smoke-${suffix}"
 
 cleanup() {
-	podman rm --force "$host_name" >/dev/null 2>&1 || true
+	podman rm --force "$host_name" "$ui_name" >/dev/null 2>&1 || true
 	podman rmi --force "$host_image" "$instance_image" "$ui_image" "$caddy_image" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
@@ -49,6 +50,26 @@ until curl --fail --silent "http://127.0.0.1:${port}/healthz" >/dev/null; do
 	attempt=$((attempt + 1))
 	if [ "$attempt" -ge 30 ]; then
 		podman logs "$host_name"
+		exit 1
+	fi
+	sleep 1
+done
+
+podman run --detach \
+	--name "$ui_name" \
+	--read-only \
+	--cap-drop all \
+	--security-opt no-new-privileges \
+	--publish 127.0.0.1::3000 \
+	"$ui_image" >/dev/null
+
+mapping=$(podman port "$ui_name" 3000/tcp)
+port=${mapping##*:}
+attempt=0
+until curl --fail --silent "http://127.0.0.1:${port}/" >/dev/null; do
+	attempt=$((attempt + 1))
+	if [ "$attempt" -ge 30 ]; then
+		podman logs "$ui_name"
 		exit 1
 	fi
 	sleep 1

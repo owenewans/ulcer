@@ -2,7 +2,7 @@
 set -eu
 
 repository=${ULCER_REPOSITORY:-owenewans/ulcer}
-version=${ULCER_VERSION:-v0.0.2}
+version=${ULCER_VERSION:-v0.0.3}
 release_url="https://github.com/${repository}/releases/download/${version}"
 bundle="ulcer-deployment-${version}.tar.gz"
 

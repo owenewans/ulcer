@@ -137,10 +137,14 @@ func (Go) Build() error {
 	if err := os.MkdirAll("bin", 0o755); err != nil {
 		return err
 	}
-	if err := run("", nil, "go", "build", "-trimpath", "-o", "bin/ulcer-host", "./cmd/ulcer-host"); err != nil {
+	ldflags, err := buildLDFlags(false)
+	if err != nil {
 		return err
 	}
-	return run("", nil, "go", "build", "-trimpath", "-o", "bin/ulcer-instance", "./cmd/ulcer-instance")
+	if err := run("", nil, "go", "build", "-trimpath", "-ldflags="+ldflags, "-o", "bin/ulcer-host", "./cmd/ulcer-host"); err != nil {
+		return err
+	}
+	return run("", nil, "go", "build", "-trimpath", "-ldflags="+ldflags, "-o", "bin/ulcer-instance", "./cmd/ulcer-instance")
 }
 
 type Web mg.Namespace
@@ -164,7 +168,15 @@ type Podman mg.Namespace
 
 // Smoke builds the runtime images and checks HOST and UI in locked-down containers.
 func (Podman) Smoke() error {
-	return run("", nil, filepath.Join("hack", "podman-smoke.sh"))
+	metadata, err := currentBuildMetadata()
+	if err != nil {
+		return err
+	}
+	return run("", map[string]string{
+		"BUILD_VERSION":    metadata.version,
+		"BUILD_REVISION":   metadata.revision,
+		"BUILD_SOURCE_REF": metadata.sourceRef,
+	}, filepath.Join("hack", "podman-smoke.sh"))
 }
 
 type Release mg.Namespace
@@ -177,17 +189,112 @@ func (Release) Binaries() error {
 		return err
 	}
 	environment := map[string]string{"CGO_ENABLED": "0", "GOOS": goos, "GOARCH": goarch}
+	ldflags, err := buildLDFlags(true)
+	if err != nil {
+		return err
+	}
 	for _, binary := range []string{"host", "instance"} {
 		extension := ""
 		if goos == "windows" {
 			extension = ".exe"
 		}
 		output := filepath.Join("dist", fmt.Sprintf("ulcer-%s-%s-%s%s", binary, goos, goarch, extension))
-		if err := run("", environment, "go", "build", "-trimpath", "-ldflags=-s -w", "-o", output, "./cmd/ulcer-"+binary); err != nil {
+		if err := run("", environment, "go", "build", "-trimpath", "-ldflags="+ldflags, "-o", output, "./cmd/ulcer-"+binary); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+type buildMetadata struct {
+	version   string
+	revision  string
+	sourceRef string
+}
+
+func currentBuildMetadata() (buildMetadata, error) {
+	metadata := buildMetadata{
+		version:   os.Getenv("BUILD_VERSION"),
+		revision:  os.Getenv("BUILD_REVISION"),
+		sourceRef: os.Getenv("BUILD_SOURCE_REF"),
+	}
+	if metadata.revision == "" {
+		metadata.revision = gitOutput("rev-parse", "HEAD")
+	}
+	releaseVersion := os.Getenv("RELEASE_VERSION")
+	exactTag := gitOutput("describe", "--tags", "--exact-match")
+	if metadata.version == "" {
+		metadata.version = releaseVersion
+	}
+	if metadata.version == "" {
+		metadata.version = exactTag
+	}
+	if metadata.version == "" {
+		metadata.version = "development"
+	}
+	if metadata.sourceRef == "" {
+		metadata.sourceRef = exactTag
+	}
+	if metadata.sourceRef == "" {
+		metadata.sourceRef = releaseVersion
+	}
+	if metadata.sourceRef == "" {
+		metadata.sourceRef = gitOutput("symbolic-ref", "--short", "-q", "HEAD")
+	}
+	if metadata.revision == "" {
+		metadata.revision = "unknown"
+	}
+	if metadata.sourceRef == "" {
+		metadata.sourceRef = metadata.revision
+	}
+	for name, value := range map[string]string{
+		"version": metadata.version, "revision": metadata.revision, "source ref": metadata.sourceRef,
+	} {
+		if !validBuildValue(value) {
+			return buildMetadata{}, fmt.Errorf("invalid build %s %q", name, value)
+		}
+	}
+	return metadata, nil
+}
+
+func validBuildValue(value string) bool {
+	if value == "" || len(value) > 256 {
+		return false
+	}
+	for _, character := range value {
+		if (character >= 'a' && character <= 'z') || (character >= 'A' && character <= 'Z') ||
+			(character >= '0' && character <= '9') || strings.ContainsRune("._/+:-", character) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func buildLDFlags(strip bool) (string, error) {
+	metadata, err := currentBuildMetadata()
+	if err != nil {
+		return "", err
+	}
+	flags := make([]string, 0, 7)
+	if strip {
+		flags = append(flags, "-s", "-w")
+	}
+	const packagePath = "github.com/owenewans/ulcer/internal/buildinfo."
+	flags = append(flags,
+		"-X", packagePath+"Version="+metadata.version,
+		"-X", packagePath+"Revision="+metadata.revision,
+		"-X", packagePath+"SourceRef="+metadata.sourceRef,
+	)
+	return strings.Join(flags, " "), nil
+}
+
+func gitOutput(arguments ...string) string {
+	output, err := exec.Command("git", arguments...).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(output))
 }
 
 // Checksums writes deterministic SHA-256 checksums for release files.

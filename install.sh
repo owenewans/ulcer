@@ -2,7 +2,7 @@
 set -eu
 
 repository=${ULCER_REPOSITORY:-owenewans/ulcer}
-version=${ULCER_VERSION:-v0.0.3}
+version=${ULCER_VERSION:-v0.0.4}
 release_url="https://github.com/${repository}/releases/download/${version}"
 bundle="ulcer-deployment-${version}.tar.gz"
 
@@ -79,6 +79,34 @@ fi
 mkdir -p "$workdir/release"
 tar --extract --gzip --file "$workdir/$bundle" --directory "$workdir/release"
 [ -d "$workdir/release/ulcer/quadlet" ] || die "invalid deployment bundle"
+instance_unit="$workdir/release/ulcer/quadlet/ulcer-instance@.container"
+[ -r "$instance_unit" ] || die "release bundle has no INSTANCE unit"
+instance_image=$(awk -F= '$1 == "Image" { print $2 }' "$instance_unit")
+case "$instance_image" in
+	*[!A-Za-z0-9._:/@-]* | *@*@* | *://* | *//* | */../* | */./*) die "release INSTANCE image is invalid" ;;
+esac
+instance_repository=${instance_image%%@sha256:*}
+[ "$instance_image" != "$instance_repository" ] || die "release INSTANCE image is not digest-pinned"
+instance_digest=${instance_image##*@sha256:}
+[ -n "$instance_repository" ] || die "release INSTANCE image repository is invalid"
+case "$instance_repository" in
+	*/*) ;;
+	*) die "release INSTANCE image repository is not fully qualified" ;;
+esac
+instance_registry=${instance_repository%%/*}
+case "$instance_registry" in
+	localhost | *.* | *:*) ;;
+	*) die "release INSTANCE image registry is not fully qualified" ;;
+esac
+[ "${#instance_digest}" -eq 64 ] || die "release INSTANCE image digest is invalid"
+case "$instance_digest" in
+	*[!0-9a-f]*) die "release INSTANCE image digest is invalid" ;;
+esac
+
+case "$public_address" in
+	*:*) public_grpc="[$public_address]:8443" ;;
+	*) public_grpc="$public_address:8443" ;;
+esac
 
 log "installing digest-pinned Quadlet units"
 install -d -m 0700 /etc/ulcer
@@ -86,8 +114,8 @@ install -d -m 0755 /etc/containers/systemd
 for unit in "$workdir/release/ulcer/quadlet/"*; do
 	install -m 0644 "$unit" "/etc/containers/systemd/$(basename "$unit")"
 done
-printf 'ULCER_HTTP_ADDR=0.0.0.0:8080\nULCER_GRPC_ADDR=0.0.0.0:8443\nULCER_DATA_DIR=/var/lib/ulcer\nULCER_PUBLIC_NAME=%s\n' \
-	"$public_address" > "$workdir/host.env"
+printf 'ULCER_HTTP_ADDR=0.0.0.0:8080\nULCER_GRPC_ADDR=0.0.0.0:8443\nULCER_DATA_DIR=/var/lib/ulcer\nULCER_PUBLIC_NAME=%s\nULCER_PUBLIC_GRPC=%s\nULCER_INSTANCE_IMAGE=%s\n' \
+	"$public_address" "$public_grpc" "$instance_image" > "$workdir/host.env"
 printf 'ULCER_PUBLIC_ADDRESS=%s\n' "$public_address" > "$workdir/caddy.env"
 install -m 0600 "$workdir/host.env" /etc/ulcer/host.env
 install -m 0600 "$workdir/caddy.env" /etc/ulcer/caddy.env

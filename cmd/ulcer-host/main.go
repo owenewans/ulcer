@@ -77,7 +77,7 @@ func run(logger *slog.Logger) error {
 
 	httpServer := &http.Server{
 		Addr:              configuration.HTTPAddr,
-		Handler:           api.New(database, authService, authority, eventBus, hub, logger),
+		Handler:           api.New(database, authService, authority, eventBus, hub, logger, configuration),
 		ReadHeaderTimeout: 5 * time.Second,
 		ReadTimeout:       15 * time.Second,
 		WriteTimeout:      0,

@@ -9,15 +9,19 @@ import (
 	"io"
 	"log/slog"
 	"os"
-	"runtime/debug"
 	"time"
 
 	controlv1 "github.com/owenewans/ulcer/gen/control/v1"
+	"github.com/owenewans/ulcer/internal/buildinfo"
 	"github.com/owenewans/ulcer/internal/config"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+var ErrIdentityRejected = errors.New("instance identity rejected")
 
 type Client struct {
 	config config.Instance
@@ -44,7 +48,9 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 	backoff := time.Second
 	for {
-		if err := c.connect(ctx, tlsConfig); err != nil && !errors.Is(err, context.Canceled) {
+		if err := c.connect(ctx, tlsConfig); identityRejected(err) {
+			return fmt.Errorf("%w: %v", ErrIdentityRejected, err)
+		} else if err != nil && !errors.Is(err, context.Canceled) {
 			c.logger.Warn("control stream disconnected", "error", err, "retry", backoff)
 		} else if err != nil {
 			return err
@@ -60,6 +66,11 @@ func (c *Client) Run(ctx context.Context) error {
 	}
 }
 
+func identityRejected(err error) bool {
+	code := status.Code(err)
+	return code == codes.Unauthenticated || code == codes.PermissionDenied
+}
+
 func (c *Client) connect(ctx context.Context, tlsConfig *tls.Config) error {
 	connection, err := grpc.NewClient(c.config.Host, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	if err != nil {
@@ -71,7 +82,7 @@ func (c *Client) connect(ctx context.Context, tlsConfig *tls.Config) error {
 		return err
 	}
 	if err := stream.Send(&controlv1.InstanceMessage{Body: &controlv1.InstanceMessage_Hello{Hello: &controlv1.InstanceHello{
-		InstanceId: c.config.ID, Name: c.config.Name, AgentVersion: version(), Capabilities: []string{"desired-state-v1"},
+		InstanceId: c.config.ID, Name: c.config.Name, AgentVersion: buildinfo.Current().Version, Capabilities: []string{"desired-state-v1"},
 	}}}); err != nil {
 		return err
 	}
@@ -105,13 +116,19 @@ func (c *Client) connect(ctx context.Context, tlsConfig *tls.Config) error {
 				return err
 			}
 		case err := <-receiveErrors:
-			if errors.Is(err, io.EOF) {
-				return errors.New("host closed control stream")
-			}
-			return err
+			return receiveError(err)
 		case message, ok := <-received:
 			if !ok {
-				return errors.New("host closed control stream")
+				// Recv reports its error before closing received. Prefer that status
+				// so a revoked identity cannot be mistaken for a retryable EOF.
+				select {
+				case err := <-receiveErrors:
+					return receiveError(err)
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					return errors.New("host closed control stream")
+				}
 			}
 			switch body := message.Body.(type) {
 			case *controlv1.HostMessage_Desired:
@@ -133,6 +150,13 @@ func (c *Client) connect(ctx context.Context, tlsConfig *tls.Config) error {
 			}
 		}
 	}
+}
+
+func receiveError(err error) error {
+	if errors.Is(err, io.EOF) {
+		return errors.New("host closed control stream")
+	}
+	return err
 }
 
 func (c *Client) sendStatus(stream grpc.BidiStreamingClient[controlv1.InstanceMessage, controlv1.HostMessage]) error {
@@ -165,12 +189,4 @@ func (c *Client) tlsConfig() (*tls.Config, error) {
 		RootCAs:      pool,
 		ServerName:   c.config.ServerName,
 	}, nil
-}
-
-func version() string {
-	info, ok := debug.ReadBuildInfo()
-	if !ok || info.Main.Version == "" {
-		return "development"
-	}
-	return info.Main.Version
 }

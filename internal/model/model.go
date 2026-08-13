@@ -4,7 +4,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
+	"regexp"
 	"time"
+)
+
+var (
+	ErrInvalidInstanceName = errors.New("instance name must be a lowercase machine label of 1 to 63 letters, digits, or hyphens")
+	instanceNamePattern    = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`)
 )
 
 type Instance struct {
@@ -21,6 +28,13 @@ type Instance struct {
 	AppliedDigest     string          `json:"applied_digest,omitempty"`
 	Phase             string          `json:"phase"`
 	Reason            string          `json:"reason,omitempty"`
+}
+
+func ValidateInstanceName(name string) error {
+	if !instanceNamePattern.MatchString(name) {
+		return ErrInvalidInstanceName
+	}
+	return nil
 }
 
 type InstanceSpec struct {

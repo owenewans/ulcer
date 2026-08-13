@@ -28,6 +28,10 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	if err := client.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if errors.Is(err, instanceagent.ErrIdentityRejected) {
+			logger.Warn("instance identity rejected; stopping permanently")
+			return
+		}
 		logger.Error("instance stopped", "error", err)
 		os.Exit(1)
 	}

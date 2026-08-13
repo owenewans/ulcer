@@ -32,7 +32,7 @@ jobs:
           bun-version: ${{ env.BUN_VERSION }}
       - run: go install github.com/magefile/mage@${MAGE_VERSION}
       - run: sudo apt-get update && sudo apt-get install --yes shellcheck
-      - run: shellcheck install.sh
+      - run: shellcheck install.sh .github/scripts/generate-release-notes.sh
       - run: bun install --frozen-lockfile
         working-directory: web
       - run: mage check

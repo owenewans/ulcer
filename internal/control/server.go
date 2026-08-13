@@ -42,6 +42,10 @@ func (s *Server) Connect(stream grpc.BidiStreamingServer[controlv1.InstanceMessa
 	if err := authorizeInstance(stream.Context(), hello.InstanceId); err != nil {
 		return err
 	}
+	reservation, reserved := s.hub.Reserve(hello.InstanceId)
+	if !reserved {
+		return status.Error(codes.Aborted, "instance deletion is in progress")
+	}
 	instance, err := s.store.UpdateInstance(hello.InstanceId, func(instance *model.Instance) error {
 		now := time.Now().UTC()
 		instance.LastSeenAt = &now
@@ -53,14 +57,22 @@ func (s *Server) Connect(stream grpc.BidiStreamingServer[controlv1.InstanceMessa
 		return nil
 	})
 	if errors.Is(err, store.ErrNotFound) {
+		s.hub.Cancel(reservation)
 		return status.Error(codes.PermissionDenied, "instance is not enrolled")
 	}
 	if err != nil {
+		s.hub.Cancel(reservation)
 		return status.Errorf(codes.Internal, "load instance: %v", err)
 	}
 
-	outbound, detach := s.hub.Attach(hello.InstanceId)
-	s.publish("instance.connected", instance.ID, map[string]any{"name": instance.Name})
+	outbound, disconnected, detach, attached := s.hub.Activate(reservation)
+	if !attached {
+		return status.Error(codes.Aborted, "instance connection was revoked")
+	}
+	if !s.publishIfEnrolled("instance.connected", instance.ID, map[string]any{"name": instance.Name}) {
+		detach()
+		return status.Error(codes.Aborted, "instance connection was revoked")
+	}
 	defer func() {
 		if detach() {
 			s.markOffline(instance.ID)
@@ -68,7 +80,7 @@ func (s *Server) Connect(stream grpc.BidiStreamingServer[controlv1.InstanceMessa
 	}()
 
 	if instance.DesiredGeneration > 0 {
-		if err := stream.Send(desiredMessage(instance)); err != nil {
+		if err := sendWhileConnected(stream, disconnected, desiredMessage(instance)); err != nil {
 			return err
 		}
 	}
@@ -93,8 +105,15 @@ func (s *Server) Connect(stream grpc.BidiStreamingServer[controlv1.InstanceMessa
 
 	for {
 		select {
+		case <-disconnected:
+			return status.Error(codes.Aborted, "connection closed")
+		default:
+		}
+		select {
 		case <-stream.Context().Done():
 			return stream.Context().Err()
+		case <-disconnected:
+			return status.Error(codes.Aborted, "connection closed")
 		case err := <-recvErr:
 			if errors.Is(err, io.EOF) {
 				return nil
@@ -104,21 +123,26 @@ func (s *Server) Connect(stream grpc.BidiStreamingServer[controlv1.InstanceMessa
 			if !ok {
 				return nil
 			}
-			if err := s.handleMessage(hello.InstanceId, message, stream); err != nil {
+			if err := s.handleMessage(hello.InstanceId, message, stream, disconnected); err != nil {
 				return err
 			}
 		case message, ok := <-outbound:
 			if !ok {
 				return status.Error(codes.Aborted, "connection replaced")
 			}
-			if err := stream.Send(message); err != nil {
+			select {
+			case <-disconnected:
+				return status.Error(codes.Aborted, "connection closed")
+			default:
+			}
+			if err := sendWhileConnected(stream, disconnected, message); err != nil {
 				return err
 			}
 		}
 	}
 }
 
-func (s *Server) handleMessage(instanceID string, message *controlv1.InstanceMessage, stream grpc.BidiStreamingServer[controlv1.InstanceMessage, controlv1.HostMessage]) error {
+func (s *Server) handleMessage(instanceID string, message *controlv1.InstanceMessage, stream grpc.BidiStreamingServer[controlv1.InstanceMessage, controlv1.HostMessage], disconnected <-chan struct{}) error {
 	switch body := message.Body.(type) {
 	case *controlv1.InstanceMessage_Status:
 		statusMessage := body.Status
@@ -141,10 +165,15 @@ func (s *Server) handleMessage(instanceID string, message *controlv1.InstanceMes
 			instance.Reason = statusMessage.Reason
 			return nil
 		})
+		if errors.Is(err, store.ErrNotFound) {
+			return status.Error(codes.PermissionDenied, "instance is not enrolled")
+		}
 		if err != nil {
 			return status.Errorf(codes.InvalidArgument, "apply status: %v", err)
 		}
-		s.publish("instance.status", instanceID, map[string]any{"phase": updated.Phase, "generation": updated.AppliedGeneration})
+		if !s.publishIfEnrolled("instance.status", instanceID, map[string]any{"phase": updated.Phase, "generation": updated.AppliedGeneration}) {
+			return status.Error(codes.PermissionDenied, "instance is not enrolled")
+		}
 	case *controlv1.InstanceMessage_Meters:
 		meters := body.Meters
 		if meters.InstanceId != instanceID {
@@ -154,16 +183,21 @@ func (s *Server) handleMessage(instanceID string, message *controlv1.InstanceMes
 			return status.Error(codes.InvalidArgument, "meter batch first sequence mismatch")
 		}
 		ack, err := s.store.ApplyMeters(instanceID, meters.Deltas)
+		if errors.Is(err, store.ErrNotFound) {
+			return status.Error(codes.PermissionDenied, "instance is not enrolled")
+		}
 		if err != nil {
 			return status.Errorf(codes.Internal, "apply meters: %v", err)
 		}
-		if err := stream.Send(&controlv1.HostMessage{Body: &controlv1.HostMessage_MeterAck{MeterAck: &controlv1.MeterAck{
+		if err := sendWhileConnected(stream, disconnected, &controlv1.HostMessage{Body: &controlv1.HostMessage_MeterAck{MeterAck: &controlv1.MeterAck{
 			InstanceId:         instanceID,
 			ContiguousSequence: ack,
 		}}}); err != nil {
 			return err
 		}
-		s.publish("traffic.updated", instanceID, map[string]any{"sequence": ack})
+		if !s.publishIfEnrolled("traffic.updated", instanceID, map[string]any{"sequence": ack}) {
+			return status.Error(codes.PermissionDenied, "instance is not enrolled")
+		}
 	case *controlv1.InstanceMessage_Hello:
 		return status.Error(codes.InvalidArgument, "hello can only be sent once")
 	default:
@@ -172,16 +206,46 @@ func (s *Server) handleMessage(instanceID string, message *controlv1.InstanceMes
 	return nil
 }
 
+func sendWhileConnected(stream grpc.BidiStreamingServer[controlv1.InstanceMessage, controlv1.HostMessage], disconnected <-chan struct{}, message *controlv1.HostMessage) error {
+	result := make(chan error, 1)
+	go func() { result <- stream.Send(message) }()
+	select {
+	case <-disconnected:
+		return status.Error(codes.Aborted, "connection closed")
+	case <-stream.Context().Done():
+		return stream.Context().Err()
+	case err := <-result:
+		return err
+	}
+}
+
 func (s *Server) markOffline(id string) {
-	_, _ = s.store.UpdateInstance(id, func(instance *model.Instance) error {
-		instance.Phase = "offline"
-		return nil
+	s.hub.IfNotRevoked(id, func() {
+		_, err := s.store.UpdateInstance(id, func(instance *model.Instance) error {
+			instance.Phase = "offline"
+			return nil
+		})
+		if err == nil {
+			s.publish("instance.disconnected", id, nil)
+		}
 	})
-	s.publish("instance.disconnected", id, nil)
 }
 
 func (s *Server) publish(eventType, resourceID string, data map[string]any) {
 	_, _ = s.events.Publish(model.Event{Type: eventType, ResourceID: resourceID, Data: data})
+}
+
+func (s *Server) publishIfEnrolled(eventType, resourceID string, data map[string]any) bool {
+	published := false
+	if !s.hub.IfNotRevoked(resourceID, func() {
+		if _, err := s.store.Instance(resourceID); err == nil {
+			s.publish(eventType, resourceID, data)
+			published = true
+		}
+	}) {
+		return false
+	}
+	return published
 }
 
 func desiredMessage(instance model.Instance) *controlv1.HostMessage {

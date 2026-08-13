@@ -28,6 +28,12 @@ type Bundle struct {
 	CAPEM          string `json:"ca_pem"`
 }
 
+type CredentialFiles struct {
+	Certificate []byte
+	PrivateKey  []byte
+	CA          []byte
+}
+
 func Ensure(dataDir, publicName string) (*Authority, Bundle, error) {
 	dir := filepath.Join(dataDir, "pki")
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -68,9 +74,17 @@ func (a *Authority) ClientPool() *x509.CertPool {
 }
 
 func (a *Authority) IssueInstance(id string) (Bundle, error) {
-	uri, err := url.Parse("spiffe://ulcer/instance/" + id)
+	files, err := a.IssueInstanceFiles(id)
 	if err != nil {
 		return Bundle{}, err
+	}
+	return Bundle{CertificatePEM: string(files.Certificate), PrivateKeyPEM: string(files.PrivateKey), CAPEM: string(files.CA)}, nil
+}
+
+func (a *Authority) IssueInstanceFiles(id string) (CredentialFiles, error) {
+	uri, err := url.Parse("spiffe://ulcer/instance/" + id)
+	if err != nil {
+		return CredentialFiles{}, err
 	}
 	template := &x509.Certificate{
 		SerialNumber: randomSerial(),
@@ -83,13 +97,13 @@ func (a *Authority) IssueInstance(id string) (Bundle, error) {
 	}
 	cert, key, err := a.issue(template)
 	if err != nil {
-		return Bundle{}, err
+		return CredentialFiles{}, err
 	}
 	caPEM, err := os.ReadFile(filepath.Join(a.dir, "ca.crt"))
 	if err != nil {
-		return Bundle{}, err
+		return CredentialFiles{}, err
 	}
-	return Bundle{CertificatePEM: string(cert), PrivateKeyPEM: string(key), CAPEM: string(caPEM)}, nil
+	return CredentialFiles{Certificate: cert, PrivateKey: key, CA: caPEM}, nil
 }
 
 func loadOrCreateAuthority(dir string) (*Authority, error) {

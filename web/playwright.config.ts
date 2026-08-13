@@ -4,8 +4,7 @@ import { join, resolve } from "node:path";
 import { defineConfig, devices } from "@playwright/test";
 
 const dataDir = join(tmpdir(), `ulcer-playwright-${randomUUID()}`);
-const localEnvironment = {
-  ...process.env,
+const proxyBypass = {
   HTTP_PROXY: "",
   HTTPS_PROXY: "",
   ALL_PROXY: "",
@@ -14,6 +13,11 @@ const localEnvironment = {
   all_proxy: "",
   NO_PROXY: "localhost,127.0.0.1,::1",
   no_proxy: "localhost,127.0.0.1,::1",
+};
+Object.assign(process.env, proxyBypass);
+const localEnvironment = {
+  ...process.env,
+  ...proxyBypass,
 };
 
 export default defineConfig({
@@ -37,7 +41,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "go run ./cmd/ulcer-host",
+      command: "go run -ldflags=\"-X github.com/owenewans/ulcer/internal/buildinfo.SourceRef=e2e-ref\" ./cmd/ulcer-host",
       cwd: resolve(process.cwd(), ".."),
       url: "http://127.0.0.1:18080/healthz",
       timeout: 120_000,
@@ -48,6 +52,8 @@ export default defineConfig({
         ULCER_GRPC_ADDR: "127.0.0.1:18443",
         ULCER_DATA_DIR: dataDir,
         ULCER_PUBLIC_NAME: "localhost",
+        ULCER_PUBLIC_GRPC: "127.0.0.1:18443",
+        ULCER_INSTANCE_IMAGE: `registry.example/ulcer-instance@sha256:${"0".repeat(64)}`,
         ULCER_SETUP_TOKEN: "ulcer-e2e-setup-token",
       },
     },

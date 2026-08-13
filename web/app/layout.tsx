@@ -2,8 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "ulcer control plane",
-  description: "Protocol infrastructure without ceremony.",
+  title: "Ulcer control plane",
+  description: "Operate Ulcer instances, runtime adapters, and traffic from the control panel.",
 };
 
 export const viewport: Viewport = {

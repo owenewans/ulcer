@@ -15,10 +15,13 @@ import (
 	"github.com/google/uuid"
 	controlv1 "github.com/owenewans/ulcer/gen/control/v1"
 	"github.com/owenewans/ulcer/internal/auth"
+	"github.com/owenewans/ulcer/internal/buildinfo"
+	"github.com/owenewans/ulcer/internal/config"
 	"github.com/owenewans/ulcer/internal/control"
 	"github.com/owenewans/ulcer/internal/events"
 	"github.com/owenewans/ulcer/internal/model"
 	"github.com/owenewans/ulcer/internal/pki"
+	"github.com/owenewans/ulcer/internal/sshinstall"
 	"github.com/owenewans/ulcer/internal/store"
 	"github.com/owenewans/ulcer/versions"
 )
@@ -32,11 +35,14 @@ type API struct {
 	events    *events.Bus
 	hub       *control.Hub
 	logger    *slog.Logger
+	config    config.Host
+	installer *sshinstall.Installer
 	limiter   loginLimiter
 }
 
-func New(store *store.Store, auth *auth.Service, authority *pki.Authority, events *events.Bus, hub *control.Hub, logger *slog.Logger) http.Handler {
-	api := &API{store: store, auth: auth, authority: authority, events: events, hub: hub, logger: logger}
+func New(store *store.Store, auth *auth.Service, authority *pki.Authority, events *events.Bus, hub *control.Hub, logger *slog.Logger, configuration config.Host) http.Handler {
+	api := &API{store: store, auth: auth, authority: authority, events: events, hub: hub, logger: logger, config: configuration}
+	api.installer = sshinstall.New(store, authority, events, hub, configuration)
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", api.health)
 	mux.HandleFunc("GET /api/v1/bootstrap/status", api.bootstrapStatus)
@@ -46,13 +52,42 @@ func New(store *store.Store, auth *auth.Service, authority *pki.Authority, event
 	mux.HandleFunc("POST /api/v1/auth/logout", api.requireAuth(api.logout))
 	mux.HandleFunc("GET /api/v1/auth/session", api.session)
 	mux.HandleFunc("GET /api/v1/dashboard", api.requireAuth(api.dashboard))
+	mux.HandleFunc("GET /api/v1/meta", api.requireAuth(api.meta))
 	mux.HandleFunc("GET /api/v1/engines", api.requireAuth(api.engines))
 	mux.HandleFunc("GET /api/v1/instances", api.requireAuth(api.instances))
 	mux.HandleFunc("POST /api/v1/instances", api.requireAuth(api.createInstance))
+	mux.HandleFunc("POST /api/v1/instances/ssh", api.requireAuth(api.installInstanceSSH))
+	mux.HandleFunc("POST /api/v1/ssh/host-key", api.requireAuth(api.sshHostKey))
 	mux.HandleFunc("GET /api/v1/instances/{id}", api.requireAuth(api.instance))
+	mux.HandleFunc("DELETE /api/v1/instances/{id}", api.requireAuth(api.deleteInstance))
 	mux.HandleFunc("PUT /api/v1/instances/{id}/desired", api.requireAuth(api.setDesired))
 	mux.HandleFunc("GET /api/v1/events", api.requireAuth(api.eventStream))
 	return api.securityHeaders(api.recoverPanic(api.accessLog(mux)))
+}
+
+func (a *API) meta(w http.ResponseWriter, _ *http.Request) {
+	info := buildinfo.Current()
+	writeJSON(w, http.StatusOK, struct {
+		Version             string `json:"version"`
+		Revision            string `json:"revision"`
+		SourceRef           string `json:"source_ref"`
+		SourceURL           string `json:"source_url"`
+		LicenseURL          string `json:"license_url"`
+		GRPCEndpoint        string `json:"grpc_endpoint"`
+		GRPCServerName      string `json:"grpc_server_name"`
+		InstanceImage       string `json:"instance_image"`
+		SSHInstallAvailable bool   `json:"ssh_install_available"`
+	}{
+		Version:             info.Version,
+		Revision:            info.Revision,
+		SourceRef:           info.SourceRef,
+		SourceURL:           buildinfo.SourceRevisionURL(info.Revision),
+		LicenseURL:          info.LicenseURL,
+		GRPCEndpoint:        a.config.PublicGRPC,
+		GRPCServerName:      a.config.PublicName,
+		InstanceImage:       a.config.InstanceImage,
+		SSHInstallAvailable: sshinstall.Available(a.config),
+	})
 }
 
 func (a *API) health(w http.ResponseWriter, _ *http.Request) {
@@ -244,9 +279,8 @@ func (a *API) createInstance(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, &request) {
 		return
 	}
-	request.Name = strings.TrimSpace(request.Name)
-	if request.Name == "" || len(request.Name) > 80 {
-		writeError(w, http.StatusBadRequest, "invalid_name", "name must contain 1 to 80 characters")
+	if err := model.ValidateInstanceName(request.Name); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_name", err.Error())
 		return
 	}
 	id := uuid.NewString()
@@ -264,6 +298,87 @@ func (a *API) createInstance(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]any{"instance": instance, "credentials": bundle})
 }
 
+func (a *API) sshHostKey(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Host string `json:"host"`
+		Port int    `json:"port"`
+	}
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	hostKey, err := sshinstall.ProbeHostKey(r.Context(), request.Host, request.Port)
+	if errors.Is(err, sshinstall.ErrInvalidTarget) || errors.Is(err, sshinstall.ErrTargetBlocked) {
+		writeError(w, http.StatusBadRequest, "invalid_ssh_target", err.Error())
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "ssh_probe_failed", "could not complete the SSH host key handshake")
+		return
+	}
+	writeJSON(w, http.StatusOK, hostKey)
+}
+
+func (a *API) installInstanceSSH(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Name          string `json:"name"`
+		Host          string `json:"host"`
+		Port          int    `json:"port"`
+		User          string `json:"user"`
+		HostKeySHA256 string `json:"host_key_sha256"`
+		Password      string `json:"password"`
+		PrivateKeyPEM string `json:"private_key_pem"`
+		Passphrase    string `json:"passphrase"`
+	}
+	if !decodeJSON(w, r, &request) {
+		return
+	}
+	password := []byte(request.Password)
+	privateKey := []byte(request.PrivateKeyPEM)
+	passphrase := []byte(request.Passphrase)
+	request.Password = ""
+	request.PrivateKeyPEM = ""
+	request.Passphrase = ""
+	defer clearBytes(password)
+	defer clearBytes(privateKey)
+	defer clearBytes(passphrase)
+
+	instance, err := a.installer.Install(r.Context(), sshinstall.Request{
+		Name: request.Name, Host: request.Host, Port: request.Port, User: request.User,
+		HostKeySHA256: request.HostKeySHA256, Password: password,
+		PrivateKeyPEM: privateKey, PrivateKeyPassword: passphrase,
+	})
+	switch {
+	case err == nil:
+		writeJSON(w, http.StatusCreated, map[string]any{"instance": instance})
+	case errors.Is(err, sshinstall.ErrUnavailable):
+		writeError(w, http.StatusServiceUnavailable, "ssh_install_unavailable", "SSH installation requires a valid public gRPC endpoint and an exact digest-pinned ULCER_INSTANCE_IMAGE")
+	case errors.Is(err, sshinstall.ErrBusy):
+		writeError(w, http.StatusTooManyRequests, "ssh_install_busy", "too many SSH installations are in progress")
+	case errors.Is(err, model.ErrInvalidInstanceName):
+		writeError(w, http.StatusBadRequest, "invalid_name", err.Error())
+	case errors.Is(err, sshinstall.ErrInvalidUser):
+		writeError(w, http.StatusBadRequest, "invalid_ssh_user", err.Error())
+	case errors.Is(err, sshinstall.ErrInvalidAuth):
+		writeError(w, http.StatusBadRequest, "invalid_ssh_auth", err.Error())
+	case errors.Is(err, sshinstall.ErrInvalidHostKey):
+		writeError(w, http.StatusBadRequest, "invalid_host_key", err.Error())
+	case errors.Is(err, sshinstall.ErrInvalidTarget), errors.Is(err, sshinstall.ErrTargetBlocked):
+		writeError(w, http.StatusBadRequest, "invalid_ssh_target", err.Error())
+	case errors.Is(err, sshinstall.ErrHostKeyMismatch):
+		writeError(w, http.StatusConflict, "host_key_mismatch", "SSH host key does not match the confirmed fingerprint")
+	case errors.Is(err, sshinstall.ErrConnect):
+		writeError(w, http.StatusBadGateway, "ssh_connect_failed", "could not connect to and authenticate with the SSH server")
+	case errors.Is(err, sshinstall.ErrPreflight):
+		writeError(w, http.StatusUnprocessableEntity, "ssh_preflight_failed", "remote host must be linux/amd64 Debian or Ubuntu with root, systemd, and cgroup v2")
+	case errors.Is(err, sshinstall.ErrOnline):
+		writeError(w, http.StatusGatewayTimeout, "instance_connect_timeout", "instance did not connect before the deadline")
+	case errors.Is(err, sshinstall.ErrInstall) && r.Context().Err() != nil:
+		writeError(w, http.StatusRequestTimeout, "ssh_install_cancelled", "SSH installation was cancelled")
+	default:
+		writeError(w, http.StatusBadGateway, "ssh_install_failed", "remote instance installation failed")
+	}
+}
+
 func (a *API) instance(w http.ResponseWriter, r *http.Request) {
 	instance, err := a.store.Instance(r.PathValue("id"))
 	if errors.Is(err, store.ErrNotFound) {
@@ -275,6 +390,26 @@ func (a *API) instance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"instance": instance, "online": a.hub.Online(instance.ID)})
+}
+
+func (a *API) deleteInstance(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	// Revocation precedes deletion so a connection that already updated the
+	// store cannot attach in the gap before its identity is removed.
+	release := a.hub.Revoke(id)
+	defer release()
+	instance, err := a.store.DeleteInstance(id)
+	if errors.Is(err, store.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "not_found", "instance does not exist")
+		return
+	}
+	if err != nil {
+		a.logger.Error("delete instance", "instance", id, "error", err)
+		writeError(w, http.StatusInternalServerError, "store_error", "could not delete instance")
+		return
+	}
+	_, _ = a.events.Publish(model.Event{Type: "instance.deleted", ResourceID: id, Data: map[string]any{"name": instance.Name}})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *API) setDesired(w http.ResponseWriter, r *http.Request) {
@@ -315,7 +450,17 @@ func (a *API) setDesired(w http.ResponseWriter, r *http.Request) {
 	delivered := a.hub.Send(instance.ID, &controlv1.HostMessage{Body: &controlv1.HostMessage_Desired{Desired: &controlv1.DesiredState{
 		InstanceId: instance.ID, Generation: instance.DesiredGeneration, SpecDigest: instance.DesiredDigest, CanonicalSpec: instance.DesiredSpec,
 	}}})
-	_, _ = a.events.Publish(model.Event{Type: "instance.desired", ResourceID: instance.ID, Data: map[string]any{"generation": instance.DesiredGeneration, "delivered": delivered}})
+	published := false
+	a.hub.IfNotRevoked(instance.ID, func() {
+		if _, err := a.store.Instance(instance.ID); err == nil {
+			_, _ = a.events.Publish(model.Event{Type: "instance.desired", ResourceID: instance.ID, Data: map[string]any{"generation": instance.DesiredGeneration, "delivered": delivered}})
+			published = true
+		}
+	})
+	if !published {
+		writeError(w, http.StatusNotFound, "not_found", "instance does not exist")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"instance": instance, "delivered": delivered})
 }
 
@@ -469,4 +614,10 @@ func writeJSON(w http.ResponseWriter, status int, value any) {
 
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]any{"error": map[string]string{"code": code, "message": message}})
+}
+
+func clearBytes(data []byte) {
+	for index := range data {
+		data[index] = 0
+	}
 }

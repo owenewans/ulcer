@@ -10,8 +10,13 @@ COPY internal ./internal
 COPY versions ./versions
 ARG TARGETOS=linux
 ARG TARGETARCH
+ARG BUILD_VERSION=development
+ARG BUILD_REVISION=unknown
+ARG BUILD_SOURCE_REF=unknown
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH:-amd64} \
-    go build -trimpath -ldflags="-s -w" -o /out/ulcer-instance ./cmd/ulcer-instance
+    go build -trimpath \
+    -ldflags="-s -w -X github.com/owenewans/ulcer/internal/buildinfo.Version=${BUILD_VERSION} -X github.com/owenewans/ulcer/internal/buildinfo.Revision=${BUILD_REVISION} -X github.com/owenewans/ulcer/internal/buildinfo.SourceRef=${BUILD_SOURCE_REF}" \
+    -o /out/ulcer-instance ./cmd/ulcer-instance
 
 FROM docker.io/library/debian@sha256:abd67ffcfa541b485a3dff59865ab629aa048a6c613e639d36e7456b0b229241
 

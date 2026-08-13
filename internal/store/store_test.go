@@ -1,10 +1,12 @@
 package store
 
 import (
+	"errors"
 	"math"
 	"testing"
 	"time"
 
+	"github.com/dgraph-io/badger/v4"
 	controlv1 "github.com/owenewans/ulcer/gen/control/v1"
 	"github.com/owenewans/ulcer/internal/model"
 )
@@ -26,6 +28,12 @@ func TestSessionStoresOnlyHashAndExpires(t *testing.T) {
 
 func TestMeterApplicationIsContiguousAndIdempotent(t *testing.T) {
 	database := openTestStore(t)
+	if err := database.PutInstance(model.Instance{ID: "instance"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.PutInstance(model.Instance{ID: "gap"}); err != nil {
+		t.Fatal(err)
+	}
 	deltas := []*controlv1.MeterDelta{
 		{Sequence: 1, UplinkBytes: 10, DownlinkBytes: 20},
 		{Sequence: 2, UplinkBytes: 30, DownlinkBytes: 40},
@@ -89,11 +97,63 @@ func TestTOTPStepCanOnlyBeConsumedOnce(t *testing.T) {
 
 func TestMeterApplicationRejectsCounterOverflow(t *testing.T) {
 	database := openTestStore(t)
+	if err := database.PutInstance(model.Instance{ID: "instance"}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.ApplyMeters("instance", []*controlv1.MeterDelta{{Sequence: 1, UplinkBytes: math.MaxUint64}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.ApplyMeters("instance", []*controlv1.MeterDelta{{Sequence: 2, UplinkBytes: 1}}); err == nil {
 		t.Fatal("expected traffic counter overflow")
+	}
+}
+
+func TestDeleteInstanceRemovesAckAndPreservesUsageAndEvents(t *testing.T) {
+	database := openTestStore(t)
+	instance := model.Instance{ID: "one", Name: "edge", CreatedAt: time.Now().UTC()}
+	if err := database.PutInstance(instance); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.ApplyMeters(instance.ID, []*controlv1.MeterDelta{{Sequence: 1, UplinkBytes: 10, DownlinkBytes: 20}}); err != nil {
+		t.Fatal(err)
+	}
+	event, err := database.AppendEvent(model.Event{Type: "instance.enrolled", ResourceID: instance.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := database.DeleteInstance(instance.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted.ID != instance.ID || deleted.Name != instance.Name {
+		t.Fatalf("unexpected deleted instance: %+v", deleted)
+	}
+	if _, err := database.Instance(instance.ID); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted instance lookup: %v", err)
+	}
+	if _, err := database.ApplyMeters(instance.ID, []*controlv1.MeterDelta{{Sequence: 2, UplinkBytes: 99}}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("deleted instance accepted meter data: %v", err)
+	}
+	if err := database.db.View(func(txn *badger.Txn) error {
+		_, err := txn.Get([]byte(meterAckPrefix + instance.ID))
+		return err
+	}); !errors.Is(err, badger.ErrKeyNotFound) {
+		t.Fatalf("meter acknowledgement survived deletion: %v", err)
+	}
+	usage, err := database.Usage()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage != (model.Usage{UplinkBytes: 10, DownlinkBytes: 20}) {
+		t.Fatalf("aggregate usage changed: %+v", usage)
+	}
+	events, err := database.EventsAfter(0, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(events) != 1 || events[0].ID != event.ID {
+		t.Fatalf("events changed: %+v", events)
 	}
 }
 

@@ -2,26 +2,49 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 type Host struct {
-	HTTPAddr   string
-	GRPCAddr   string
-	DataDir    string
-	PublicName string
-	SetupToken string
+	HTTPAddr      string
+	GRPCAddr      string
+	DataDir       string
+	PublicName    string
+	PublicGRPC    string
+	InstanceImage string
+	SetupToken    string
 }
 
 func HostFromEnv() Host {
+	publicName := publicHost(envOr("ULCER_PUBLIC_NAME", "localhost"))
 	return Host{
-		HTTPAddr:   envOr("ULCER_HTTP_ADDR", "127.0.0.1:8080"),
-		GRPCAddr:   envOr("ULCER_GRPC_ADDR", "127.0.0.1:8443"),
-		DataDir:    envOr("ULCER_DATA_DIR", "./data/host"),
-		PublicName: envOr("ULCER_PUBLIC_NAME", "localhost"),
-		SetupToken: os.Getenv("ULCER_SETUP_TOKEN"),
+		HTTPAddr:      envOr("ULCER_HTTP_ADDR", "127.0.0.1:8080"),
+		GRPCAddr:      envOr("ULCER_GRPC_ADDR", "127.0.0.1:8443"),
+		DataDir:       envOr("ULCER_DATA_DIR", "./data/host"),
+		PublicName:    publicName,
+		PublicGRPC:    envOr("ULCER_PUBLIC_GRPC", publicGRPCDefault(publicName)),
+		InstanceImage: os.Getenv("ULCER_INSTANCE_IMAGE"),
+		SetupToken:    os.Getenv("ULCER_SETUP_TOKEN"),
 	}
+}
+
+func publicGRPCDefault(publicName string) string {
+	host := publicHost(publicName)
+	if host == "" {
+		host = "localhost"
+	}
+	return net.JoinHostPort(host, "8443")
+}
+
+func publicHost(value string) string {
+	host := strings.TrimSpace(value)
+	if strings.HasPrefix(host, "[") && strings.HasSuffix(host, "]") {
+		host = strings.TrimSuffix(strings.TrimPrefix(host, "["), "]")
+	}
+	return host
 }
 
 type Instance struct {

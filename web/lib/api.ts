@@ -20,6 +20,18 @@ export type Dashboard = {
   now: string;
 };
 
+export type Meta = {
+  version: string;
+  revision: string;
+  source_ref: string;
+  source_url: string;
+  license_url: string;
+  grpc_endpoint: string;
+  grpc_server_name: string;
+  instance_image: string;
+  ssh_install_available: boolean;
+};
+
 export type Engine = {
   id: string;
   name: string;
@@ -35,7 +47,6 @@ export type Engine = {
 
 export type EngineCatalog = {
   schema: number;
-  reviewed_at: string;
   policy: string;
   engines: Engine[];
 };

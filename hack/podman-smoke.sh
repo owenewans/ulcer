@@ -25,8 +25,14 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-podman build --file "$root/deploy/Containerfile.host" --tag "$host_image" "$root"
-podman build --file "$root/deploy/Containerfile.instance" --tag "$instance_image" "$root"
+podman build --file "$root/deploy/Containerfile.host" --tag "$host_image" \
+	--build-arg "BUILD_VERSION=${BUILD_VERSION:-development}" \
+	--build-arg "BUILD_REVISION=${BUILD_REVISION:-unknown}" \
+	--build-arg "BUILD_SOURCE_REF=${BUILD_SOURCE_REF:-unknown}" "$root"
+podman build --file "$root/deploy/Containerfile.instance" --tag "$instance_image" \
+	--build-arg "BUILD_VERSION=${BUILD_VERSION:-development}" \
+	--build-arg "BUILD_REVISION=${BUILD_REVISION:-unknown}" \
+	--build-arg "BUILD_SOURCE_REF=${BUILD_SOURCE_REF:-unknown}" "$root"
 podman build --file "$root/deploy/Containerfile.ui" --tag "$ui_image" "$root"
 podman build --file "$root/deploy/Containerfile.caddy" --tag "$caddy_image" "$root"
 podman run --rm --env ULCER_PUBLIC_ADDRESS=127.0.0.1 "$caddy_image" \

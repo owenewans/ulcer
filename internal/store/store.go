@@ -202,6 +202,34 @@ func (s *Store) PutInstance(instance model.Instance) error {
 	})
 }
 
+func (s *Store) DeleteInstance(id string) (model.Instance, error) {
+	var deleted model.Instance
+	for range 8 {
+		deleted = model.Instance{}
+		err := s.db.Update(func(txn *badger.Txn) error {
+			key := []byte(instancePrefix + id)
+			item, err := txn.Get(key)
+			if errors.Is(err, badger.ErrKeyNotFound) {
+				return ErrNotFound
+			}
+			if err != nil {
+				return err
+			}
+			if err := item.Value(func(value []byte) error { return json.Unmarshal(value, &deleted) }); err != nil {
+				return err
+			}
+			if err := txn.Delete(key); err != nil {
+				return err
+			}
+			return txn.Delete([]byte(meterAckPrefix + id))
+		})
+		if !errors.Is(err, badger.ErrConflict) {
+			return deleted, err
+		}
+	}
+	return model.Instance{}, badger.ErrConflict
+}
+
 func (s *Store) Instance(id string) (model.Instance, error) {
 	var instance model.Instance
 	err := s.db.View(func(txn *badger.Txn) error {
@@ -260,12 +288,22 @@ func (s *Store) UpdateInstance(id string, mutate func(*model.Instance) error) (m
 		}
 		return txn.Set([]byte(instancePrefix+id), value)
 	})
+	if errors.Is(err, badger.ErrConflict) {
+		if _, lookupErr := s.Instance(id); errors.Is(lookupErr, ErrNotFound) {
+			return updated, ErrNotFound
+		}
+	}
 	return updated, err
 }
 
 func (s *Store) ApplyMeters(instanceID string, deltas []*controlv1.MeterDelta) (uint64, error) {
 	var acknowledged uint64
 	err := s.db.Update(func(txn *badger.Txn) error {
+		if _, err := txn.Get([]byte(instancePrefix + instanceID)); errors.Is(err, badger.ErrKeyNotFound) {
+			return ErrNotFound
+		} else if err != nil {
+			return err
+		}
 		ackKey := []byte(meterAckPrefix + instanceID)
 		acknowledged, _ = getUint64(txn, ackKey)
 		usage, err := getUsage(txn)
@@ -298,6 +336,11 @@ func (s *Store) ApplyMeters(instanceID string, deltas []*controlv1.MeterDelta) (
 		}
 		return txn.Set([]byte(usageTotalKey), value)
 	})
+	if errors.Is(err, badger.ErrConflict) {
+		if _, lookupErr := s.Instance(instanceID); errors.Is(lookupErr, ErrNotFound) {
+			return acknowledged, ErrNotFound
+		}
+	}
 	return acknowledged, err
 }
 
